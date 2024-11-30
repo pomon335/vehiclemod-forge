@@ -1,4 +1,4 @@
-package com.dawnestofbread.vehiclemod;
+package com.dawnestofbread.vehiclemod.registries;
 
 import com.dawnestofbread.vehiclemod.vehicles.entities.Annihilator;
 import net.minecraft.world.entity.EntityType;
@@ -10,7 +10,7 @@ import net.minecraftforge.registries.RegistryObject;
 
 public class VehicleRegistry {
     public static String MODID = "vehiclemod";
-    public static void RegisterAll() {
+    public static void RegisterAllVehicles() {
         ENTITIES.register(FMLJavaModLoadingContext.get().getModEventBus());
     }
 

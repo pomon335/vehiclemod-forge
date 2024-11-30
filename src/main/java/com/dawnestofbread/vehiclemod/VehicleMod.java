@@ -2,6 +2,7 @@ package com.dawnestofbread.vehiclemod;
 
 import com.dawnestofbread.vehiclemod.client.handlers.PlayerTransformHandler;
 import com.dawnestofbread.vehiclemod.network.PacketHandler;
+import com.dawnestofbread.vehiclemod.registries.VehicleRegistry;
 import com.dawnestofbread.vehiclemod.vehicles.renderers.AnnihilatorRenderer;
 import com.mojang.logging.LogUtils;
 import net.minecraft.client.renderer.entity.EntityRenderers;
@@ -18,7 +19,8 @@ import net.minecraftforge.event.server.ServerStartingEvent;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import org.slf4j.Logger;
 
-import static com.dawnestofbread.vehiclemod.VehicleRegistry.RegisterAll;
+import static com.dawnestofbread.vehiclemod.registries.RendererRegistry.RegisterAllRenderers;
+import static com.dawnestofbread.vehiclemod.registries.VehicleRegistry.RegisterAllVehicles;
 
 // The value here should match an entry in the META-INF/mods.toml file
 @Mod("vehiclemod")
@@ -37,7 +39,7 @@ public class VehicleMod
         FMLJavaModLoadingContext.get().getModEventBus().addListener(this::processIMC);
 
         // Register ourselves for server and other game events we are interested in
-        RegisterAll();
+        RegisterAllVehicles();
         MinecraftForge.EVENT_BUS.register(this);
         MinecraftForge.EVENT_BUS.register(new PlayerTransformHandler());
     }
@@ -65,7 +67,7 @@ public class VehicleMod
     public static class ClientModEvents {
         @SubscribeEvent
         public static void onClientSetup(FMLClientSetupEvent event) {
-            EntityRenderers.register(VehicleRegistry.ANNIHILATOR.get(), AnnihilatorRenderer::new);
+            RegisterAllRenderers();
         }
     }
 
