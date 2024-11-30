@@ -20,6 +20,7 @@ import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
@@ -29,6 +30,7 @@ import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import software.bernie.geckolib.animatable.GeoEntity;
 import software.bernie.geckolib.core.animatable.instance.AnimatableInstanceCache;
@@ -166,14 +168,8 @@ public abstract class AbstractVehicle extends Entity implements GeoEntity {
         this.lerpSteps = 10;
     }
 
-    private void tickLerp()
+    private void lerpTick()
     {
-        if(this.isControlledByLocalInstance())
-        {
-            this.lerpSteps = 0;
-            this.setPosRaw(this.getX(), this.getY(), this.getZ());
-        }
-
         if(this.lerpSteps > 0)
         {
             double d0 = this.getX() + (this.lerpX - this.getX()) / (double) this.lerpSteps;
@@ -182,8 +178,11 @@ public abstract class AbstractVehicle extends Entity implements GeoEntity {
             double d3 = MathHelper.wrapDegrees(this.lerpYaw - (double) this.getYRot());
             --this.lerpSteps;
             this.setPos(d0, d1, d2);
-            //this.setRot((float) lerpPitch, (float) lerpYaw);
-            this.setRot((float) ((double) this.getYRot() + d3 / (double) this.lerpSteps), (float) ((double) this.getXRot() + (this.lerpPitch - (double) this.getXRot()) / (double) this.lerpSteps));
+
+            float y = (float) ((double) this.getYRot() + d3 / (double) this.lerpSteps);
+            float x = (float) ((double) this.getXRot() + (this.lerpPitch - (double) this.getXRot()) / (double) this.lerpSteps);
+            if (!Float.isNaN(y)) this.setYRot(y);
+            if (!Float.isNaN(x)) this.setXRot(x);
         }
     }
 
@@ -199,14 +198,9 @@ public abstract class AbstractVehicle extends Entity implements GeoEntity {
             this.setXRot((float) this.lerpPitch);
         }
 
-        // Makes the player face the same forward of the vehicle
+        // This probably could be removed in favour of the updatePassengerPosition method
         passenger.setXRot(this.getXRot());
         passenger.setYRot(this.getYRot());
-
-        // Resets the passenger yaw offset
-        if(passenger instanceof Player && ((Player) passenger).isLocalPlayer())
-        {
-        }
     }
 
     @Override
@@ -223,7 +217,7 @@ public abstract class AbstractVehicle extends Entity implements GeoEntity {
     @SubscribeEvent
     public void tick(double deltaTime) {
         super.tick();
-        this.tickLerp();
+        this.lerpTick();
 
         if (this.level().isClientSide) {
             if (this.SeatManager.get(0).equals(Minecraft.getInstance().player.getUUID())) {
@@ -275,7 +269,9 @@ public abstract class AbstractVehicle extends Entity implements GeoEntity {
     public InteractionResult interact(Player player, InteractionHand hand) {
         if(!player.level().isClientSide && !player.isCrouching())
         {
+            // Unused for now
             ItemStack heldItem = player.getItemInHand(hand);
+
             if(this.canRide(player))
             {
                 if (SeatManager.contains(player.getUUID())) return InteractionResult.SUCCESS;
@@ -305,10 +301,6 @@ public abstract class AbstractVehicle extends Entity implements GeoEntity {
         return InteractionResult.SUCCESS;
     }
 
-    // Yeah, it's kinda dumb, but I guess it's the best way to do that?
-    // They should probably just have a variable for it...
-    // Never-mind, I'm dumb, because what if you want the position to
-    // be dynamic for some reason
     @Override
     protected void positionRider(Entity rider_, MoveFunction moveFunc) {
         super.positionRider(rider_, moveFunc);

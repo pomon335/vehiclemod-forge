@@ -5,7 +5,7 @@ import net.minecraft.world.phys.Vec3;
 
 public class WheelData {
     public Vec3 startingRelativePosition;
-    public boolean affectedByTurn;
+    public boolean affectedBySteering;
     public boolean affectedByEngine;
     public boolean affectedByBrake;
     public boolean affectedByHandbrake;

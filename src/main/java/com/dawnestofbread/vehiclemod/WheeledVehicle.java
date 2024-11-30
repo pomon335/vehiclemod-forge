@@ -4,7 +4,6 @@ import com.dawnestofbread.vehiclemod.client.effects.SurfaceHelper;
 import com.dawnestofbread.vehiclemod.utils.Curve;
 import com.dawnestofbread.vehiclemod.utils.VectorUtils;
 import com.dawnestofbread.vehiclemod.utils.WheelData;
-import com.dawnestofbread.vehiclemod.vehicles.wheeltypes.WheelType;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.game.ClientboundSetActionBarTextPacket;
 import net.minecraft.network.syncher.EntityDataAccessor;
@@ -32,7 +31,6 @@ public abstract class WheeledVehicle extends AbstractVehicle {
     private static final EntityDataAccessor<Boolean> BRAKING = SynchedEntityData.defineId(WheeledVehicle.class, EntityDataSerializers.BOOLEAN);
 
     protected Vec3 forwardVelocity = new Vec3(0,0,0);
-    protected Vec3 sideVelocity = new Vec3(0,0,0);
     protected Vec3 gravitationalAcceleration = new Vec3(0,-0.98,0);
     protected double angularVelocity;
     public WheelData[] Wheels;
@@ -40,7 +38,6 @@ public abstract class WheeledVehicle extends AbstractVehicle {
     protected int driveWheelReferenceIndex;
     protected double weight, idleBrakeAmount = .1, height;
     protected double dragConstant = 0.4257, brakingConstant = 10000, rollingResistanceConstant = 12.8, corneringStiffness;
-    public WheelType wheelType;
 
     protected double movementDirection;
     protected double idleRPM, shiftUpRPM, shiftDownRPM, maxRPM, engineForce;
@@ -56,9 +53,11 @@ public abstract class WheeledVehicle extends AbstractVehicle {
     protected double engineForceMultiplier;
     protected double slipRatio;
     protected double transmissionEfficiency; // .7 - .9
-    protected double corneringForce;
     protected Curve torqueCurve;
     protected int currentGear;
+    protected int targetGear;
+    private double shiftTimeLeft;
+    protected double timeToShift;
     protected double steeringDelta, circleRadius, frontSlipAngle, rearSlipAngle, sideslipAngle;
     public double steeringAngle;
     public double maxBodyPitch; // How much the body rotates when shifting weight
@@ -67,6 +66,7 @@ public abstract class WheeledVehicle extends AbstractVehicle {
 
     protected double[] gearRatios;
     protected double differentialRatio;
+    protected double traction;
 
     protected WheeledVehicle(EntityType<? extends Entity> entityType, Level worldIn) {
         super(entityType, worldIn);
@@ -165,21 +165,24 @@ public abstract class WheeledVehicle extends AbstractVehicle {
             centrifugalForce = new Vec3(-1,0,0).scale(forwardSpeed / circleRadius);
 
             double centrifugalForceMultiplier = handbrake == 1 ? forwardSpeed / 2 : forwardSpeed / 5;
+            centrifugalForceMultiplier *= 1.5 - traction;
 
             // Should be in a -1 — +1 range
             weightTransferX = (height / wheelBase) * ((acceleration.length() * (forward.dot(acceleration.yRot(-this.getYRot() * (Mth.PI/180)).normalize()))) / gravity) * 2;
-            // This equation is baloney, but it sure does look nice
+            // This equation is baloney, but the result sure does look nice
             weightTransferZ = (height / wheelBase) * ((centrifugalForce.length() * centrifugalForceMultiplier * (forward.yRot(90 * (Mth.PI/180)).dot(centrifugalForce.yRot(-this.getYRot() * (Mth.PI/180)).normalize()))) / gravity) * 4;
+
             this.writeFloatTag(WEIGHT_TRANSFER_X, (float) weightTransferX);
             this.writeFloatTag(WEIGHT_TRANSFER_Z, (float) weightTransferZ);
 
             // Steering ends here
             // Onto actually using those calculations for something
 
-            gearShift();
+            gearShift(deltaTime);
             updateWheels(deltaTime);
 
-            forwardVelocity = forwardVelocity.add(0,0,-centrifugalForce.length() * (forwardSpeed / 120));
+            // Makes turning 'balanced', you can't just keep gaining speed when turning hard
+            forwardVelocity = forwardVelocity.add(0,0,-centrifugalForce.length() * (forwardSpeed / 150));
 
             this.move(MoverType.SELF, forwardVelocity.yRot(-this.getYRot() * (Mth.PI/180)).add(centrifugalForce.scale(centrifugalForceMultiplier * 2).yRot(-this.getYRot() * (Mth.PI/180))).scale(deltaTime).add(this.onGround() ? Vec3.ZERO : gravitationalAcceleration));
             double yawVelocity = -(float)((angularVelocity * deltaTime) * movementDirection);
@@ -197,14 +200,20 @@ public abstract class WheeledVehicle extends AbstractVehicle {
         }
     }
 
-    protected void gearShift() {
-        // This is... yeah...
-        // TODO Make a better automatic gearbox system
-        if (throttle > 0 && currentGear + 1 < gearRatios.length && RPM >= shiftUpRPM && movementDirection > 0) currentGear++;
-        if (throttle > 0 && currentGear < 2 && movementDirection > 0) currentGear++;
-        if (throttle <= 0 && currentGear - 1 > 0 && RPM <= shiftDownRPM && movementDirection > 0) currentGear--;
-        if (throttle < 0 && currentGear != 0 && movementDirection < 0) currentGear = 0;
-        if (throttle == 0 && currentGear != 1 && movementDirection < 1) currentGear = 1;
+    protected void gearShift(double deltaTime) {
+        if (shiftTimeLeft > 0) {
+            currentGear = 1;
+            shiftTimeLeft -= deltaTime;
+        }
+        if (shiftTimeLeft <= 0) {
+            currentGear = targetGear;
+            if (throttle > 0 && currentGear == 1) {currentGear = 2; targetGear = 2;}
+            else if (throttle < 0 && currentGear == 1) {currentGear = 0; targetGear = 0;}
+            else if (throttle > 0 && currentGear == 0) {currentGear = 1; targetGear = 1;}
+            else if (RPM > shiftUpRPM && currentGear > 1 && throttle > 0) targetGear++;
+            else if (RPM < shiftDownRPM && currentGear > 1 && throttle <= 0) targetGear--;
+            if (currentGear != targetGear && targetGear < gearRatios.length) shiftTimeLeft = timeToShift;
+        }
     }
     protected abstract void setupWheels();
 
@@ -247,15 +256,17 @@ public abstract class WheeledVehicle extends AbstractVehicle {
 
         if (wheel.affectedByEngine) {
             wheel.angularVelocity = forwardSpeed / wheel.radius;
-        }
-        if (!wheel.affectedByEngine && wheel.onGround) wheel.angularVelocity = forwardSpeed / wheel.radius; else wheel.angularVelocity *= 0.8;
+        } else if (wheel.onGround) {
+            wheel.angularVelocity = (forwardSpeed / wheel.radius);
+            if (wheel.affectedBySteering) angularVelocity /= steering * steeringAngle + 1;
+        } else wheel.angularVelocity *= 0.8;
         if (((wheel.affectedByBrake && braking) || (wheel.affectedByHandbrake & handbrake > 0f))) wheel.angularVelocity = 0;
 
         double probability = Math.abs(wheel.angularVelocity) / 20;
         double result = Math.random();
 
         if (result < probability) SurfaceHelper.spawnFrictionEffect(SurfaceHelper.getSurfaceFromPosition(this.getBlockPosBelowThatAffectsMyMovement()), this.position().add(wheel.currentRelativePosition.x / 2, wheel.currentRelativePosition.y / 2, wheel.currentRelativePosition.z / 2), forward.scale(movementDirection).add(0,.01,0));
-        if ((((wheel.affectedByBrake && braking) || (wheel.affectedByHandbrake & handbrake > 0f) || (!wheel.affectedByTurn && angularVelocity > 0.5 && forwardSpeed > 7)) && Math.abs(forwardSpeed) > 1)) SurfaceHelper.spawnSkidEffect(SurfaceHelper.getSurfaceFromPosition(this.getBlockPosBelowThatAffectsMyMovement()), this.position().add(wheel.currentRelativePosition.x / 2, wheel.currentRelativePosition.y / 2, wheel.currentRelativePosition.z / 2), forward.scale(movementDirection).add(0,.01,0));
+        if ((((wheel.affectedByBrake && braking) || (wheel.affectedByHandbrake & handbrake > 0f) || (!wheel.affectedBySteering && angularVelocity > 0.5 && forwardSpeed > 7)) && Math.abs(forwardSpeed) > 1)) SurfaceHelper.spawnSkidEffect(SurfaceHelper.getSurfaceFromPosition(this.getBlockPosBelowThatAffectsMyMovement()), this.position().add(wheel.currentRelativePosition.x / 2, wheel.currentRelativePosition.y / 2, wheel.currentRelativePosition.z / 2), forward.scale(movementDirection).add(0,.01,0));
     }
 
     protected void updatePassengerPosition(Entity passenger)

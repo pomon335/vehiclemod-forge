@@ -6,7 +6,6 @@ import com.dawnestofbread.vehiclemod.utils.SeatData;
 import com.dawnestofbread.vehiclemod.utils.WheelData;
 import net.minecraft.world.entity.*;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
@@ -48,7 +47,7 @@ public class Annihilator extends WheeledVehicle {
 
         // Brake multiplier applied when there's no input
         this.idleBrakeAmount = .25;
-        // Unused right now
+        // Unused
         this.corneringStiffness = 60;
 
         // Torque curve
@@ -66,8 +65,8 @@ public class Annihilator extends WheeledVehicle {
         // Gear setup
         this.differentialRatio = 3.42;
         this.gearRatios = new double[7];
-        this.gearRatios[0] = -1; // Reverse
-        this.gearRatios[1] = 0.01;    // Neutral
+        this.gearRatios[0] = -1.5; // Reverse
+        this.gearRatios[1] = 0.01; // Neutral
         this.gearRatios[2] = 2.66; // 1st
         this.gearRatios[3] = 1.78; // 2nd and so on...
         this.gearRatios[4] = 1.30;
@@ -77,9 +76,14 @@ public class Annihilator extends WheeledVehicle {
         // Used for the automatic gearbox
         this.shiftUpRPM = 3000;
         this.shiftDownRPM = 2500;
+        // In seconds
+        this.timeToShift = 1;
 
-        // How much the wheels turn; using Ackermann steering geometry
+        // How much the wheels, turn; NOT using Ackermann steering geometry
         this.steeringAngle = 35;
+
+        // Traction/grip while turning (0-1 range; 1 meaning great grip, 0 meaning awful)
+        this.traction = 0.73;
     }
 
     // Create the seats and set their offsets
@@ -129,8 +133,8 @@ public class Annihilator extends WheeledVehicle {
         Wheels[2].startingRelativePosition = new Vec3(1.9125, 0.803125, -3.002225);
         Wheels[3].startingRelativePosition = new Vec3(-1.9125, 0.803125, -3.002225);
 
-        Wheels[0].affectedByTurn = true;
-        Wheels[1].affectedByTurn = true;
+        Wheels[0].affectedBySteering = true;
+        Wheels[1].affectedBySteering = true;
 
         Wheels[0].mass = 50;
         Wheels[1].mass = 50;

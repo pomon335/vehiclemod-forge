@@ -41,7 +41,7 @@ public abstract class AbstractWheeledVehicleRenderer<T extends WheeledVehicle> e
             GeoBone bone = this.getGeoModel().getBone("wheel" + String.valueOf(i)).orElse(null);
             if (bone != null) {
                 bone.setRotX(bone.getRotX() - (float) (entity.Wheels[i].angularVelocity * deltaTime));
-                if (entity.Wheels[i].affectedByTurn) bone.setRotY(Maths.fInterpToExp(bone.getRotY(), (float) - (entity.steering * entity.steeringAngle) * (Mth.PI/180), 4.25f, (float) deltaTime));
+                if (entity.Wheels[i].affectedBySteering) bone.setRotY(Maths.fInterpToExp(bone.getRotY(), (float) - (entity.steering * entity.steeringAngle) * (Mth.PI/180), 4.25f, (float) deltaTime));
             }
 
         }
