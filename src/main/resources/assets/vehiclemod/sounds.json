@@ -1,0 +1,5 @@
+{
+    "open_chest": {
+      "sounds": [ "mymod:open_chest_sound_file" ]
+    }
+  }
