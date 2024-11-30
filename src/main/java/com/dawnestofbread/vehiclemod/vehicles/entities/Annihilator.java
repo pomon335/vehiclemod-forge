@@ -18,31 +18,40 @@ public class Annihilator extends WheeledVehicle {
 
     public Annihilator(EntityType<? extends Entity> entityType, Level worldIn) {
         super(entityType, worldIn);
+        // This probably could be moved to setupSeats, but meh
         SeatManager = new ArrayList<UUID>(4);
         SeatManager.add(0,UUID.fromString("00000000-0000-0000-0000-000000000000"));
         SeatManager.add(1,UUID.fromString("00000000-0000-0000-0000-000000000000"));
         SeatManager.add(2,UUID.fromString("00000000-0000-0000-0000-000000000000"));
         SeatManager.add(3,UUID.fromString("00000000-0000-0000-0000-000000000000"));
 
+        // WIP Setup collision boxes
         this.collision = new Vec3[1][2];
         this.collision[0][0] = new Vec3(2.0625,0.75,-5.125);
         this.collision[0][1] = new Vec3(-2.0625,2.6875,0.5);
 
+        // Some values required for maths; when getting them from Blockbench, divide the value by 8!
         this.rearAxle = new Vec3(0, 0.838125, -3.004375);
         this.frontAxle = new Vec3(0, 0.838125, 3.745625);
         this.centreOfGeometry = new Vec3(0,0,0);
         this.height = 3.75;
+
+        // Purely visual, should be set up to not clip into the tyres
         this.maxBodyPitch = 5;
         this.maxBodyRoll = 10;
 
+        // Really important values here, you should try to get them right
         this.idleRPM = 600;
         this.maxRPM = 6000;
         this.mass = 1900;
         this.engineForceMultiplier = 1600;
 
+        // Brake multiplier applied when there's no input
         this.idleBrakeAmount = .25;
+        // Unused right now
         this.corneringStiffness = 60;
 
+        // Torque curve
         List<Double> tempTCurve = new LinkedList<Double>();
         tempTCurve.add(0, 100d);
         tempTCurve.add(1, 100d);
@@ -54,6 +63,7 @@ public class Annihilator extends WheeledVehicle {
         this.transmissionEfficiency = .7;
         this.torqueCurve = new Curve(tempTCurve);
 
+        // Gear setup
         this.differentialRatio = 3.42;
         this.gearRatios = new double[7];
         this.gearRatios[0] = -1; // Reverse
@@ -64,20 +74,20 @@ public class Annihilator extends WheeledVehicle {
         this.gearRatios[5] = 1.0;
         this.gearRatios[6] = 0.74;
 
+        // Used for the automatic gearbox
         this.shiftUpRPM = 3000;
         this.shiftDownRPM = 2500;
 
+        // How much the wheels turn; using Ackermann steering geometry
         this.steeringAngle = 35;
-
-        this.setBoundingBox(new AABB(this.position().x - .9375, this.position().y, this.position().z -4.015625, this.position().x + .9375, this.position().y + 1.3125, this.position().z +1.015625));
     }
 
-
-
+    // Create the seats and set their offsets
     @Override
     protected void setupSeats() {
         Seats = new SeatData[4];
 
+        // All divided by 8 again
         SeatData seat0 = new SeatData();
         seat0.seatOffset = new Vec3(0.40625,0.090625,1.88125 - 1.5625);
         Seats[0] = seat0;
@@ -97,6 +107,7 @@ public class Annihilator extends WheeledVehicle {
         Seats[3] = seat3;
     }
 
+    // Create the wheels and set their parameters
     @Override
     protected void setupWheels() {
         Wheels = new WheelData[4];
@@ -106,11 +117,13 @@ public class Annihilator extends WheeledVehicle {
         Wheels[2] = new WheelData();
         Wheels[3] = new WheelData();
 
+        // Remember to divide this by 8 too
         Wheels[0].radius = 0.390625;
         Wheels[1].radius = 0.390625;
         Wheels[2].radius = 0.390625;
         Wheels[3].radius = 0.390625;
 
+        // And this
         Wheels[0].startingRelativePosition = new Vec3(1.9125, 0.803125, 3.747775);
         Wheels[1].startingRelativePosition = new Vec3(-1.9125, 0.803125, 3.747775);
         Wheels[2].startingRelativePosition = new Vec3(1.9125, 0.803125, -3.002225);
