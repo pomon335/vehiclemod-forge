@@ -2,10 +2,7 @@ package com.dawnestofbread.vehiclemod;
 
 import com.dawnestofbread.vehiclemod.client.handlers.PlayerTransformHandler;
 import com.dawnestofbread.vehiclemod.network.PacketHandler;
-import com.dawnestofbread.vehiclemod.registries.VehicleRegistry;
-import com.dawnestofbread.vehiclemod.vehicles.renderers.AnnihilatorRenderer;
 import com.mojang.logging.LogUtils;
-import net.minecraft.client.renderer.entity.EntityRenderers;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.entity.EntityAttributeCreationEvent;
@@ -20,6 +17,7 @@ import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import org.slf4j.Logger;
 
 import static com.dawnestofbread.vehiclemod.registries.RendererRegistry.RegisterAllRenderers;
+import static com.dawnestofbread.vehiclemod.registries.SoundEventRegistry.RegisterAllSoundEvents;
 import static com.dawnestofbread.vehiclemod.registries.VehicleRegistry.RegisterAllVehicles;
 
 // The value here should match an entry in the META-INF/mods.toml file
@@ -40,6 +38,7 @@ public class VehicleMod
 
         // Register ourselves for server and other game events we are interested in
         RegisterAllVehicles();
+        RegisterAllSoundEvents();
         MinecraftForge.EVENT_BUS.register(this);
         MinecraftForge.EVENT_BUS.register(new PlayerTransformHandler());
     }

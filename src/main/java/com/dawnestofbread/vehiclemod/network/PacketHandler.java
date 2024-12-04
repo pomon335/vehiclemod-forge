@@ -23,5 +23,6 @@ public class PacketHandler {
         registerMessage(MessageThrottle.class, new MessageThrottle());
         registerMessage(MessageSteering.class, new MessageSteering());
         registerMessage(MessageHandbrake.class, new MessageHandbrake());
+        registerMessage(MessageSprint.class, new MessageSprint());
     }
 }

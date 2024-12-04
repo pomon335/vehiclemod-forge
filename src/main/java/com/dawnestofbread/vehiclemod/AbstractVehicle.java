@@ -1,11 +1,10 @@
 package com.dawnestofbread.vehiclemod;
 
+import com.dawnestofbread.vehiclemod.client.audio.AudioManager;
+import com.dawnestofbread.vehiclemod.client.audio.SimpleEngineSound;
+import com.dawnestofbread.vehiclemod.network.*;
 import com.dawnestofbread.vehiclemod.utils.Maths;
 import com.eliotlash.mclib.utils.MathHelper;
-import com.dawnestofbread.vehiclemod.network.MessageHandbrake;
-import com.dawnestofbread.vehiclemod.network.MessageSteering;
-import com.dawnestofbread.vehiclemod.network.MessageThrottle;
-import com.dawnestofbread.vehiclemod.network.PacketHandler;
 import com.dawnestofbread.vehiclemod.utils.SeatData;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
@@ -15,12 +14,11 @@ import net.minecraft.nbt.Tag;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
-import net.minecraft.util.Mth;
+import net.minecraft.sounds.SoundEvent;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
-import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
@@ -30,28 +28,25 @@ import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import software.bernie.geckolib.animatable.GeoEntity;
 import software.bernie.geckolib.core.animatable.instance.AnimatableInstanceCache;
 import software.bernie.geckolib.core.animation.AnimatableManager;
-import software.bernie.geckolib.core.animation.AnimationController;
-import software.bernie.geckolib.core.animation.AnimationState;
 import software.bernie.geckolib.core.animation.RawAnimation;
-import software.bernie.geckolib.core.object.PlayState;
 import software.bernie.geckolib.util.GeckoLibUtil;
 
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
+
+import static com.dawnestofbread.vehiclemod.client.audio.AudioManager.playEngineSound;
 
 public abstract class AbstractVehicle extends Entity implements GeoEntity {
     public static final Logger LOGGER = VehicleMod.LOGGER;
-    private final AnimatableInstanceCache geoCache = GeckoLibUtil.createInstanceCache(this);
+    private AnimatableInstanceCache geoCache;
     protected static final RawAnimation ANIM = RawAnimation.begin().thenLoop("programmable");
 
     public Vec3 translateOffset = new Vec3(0,0,0);
     public List<UUID> SeatManager;
-    private static final EntityDataAccessor<CompoundTag> SEAT_TRACKER = SynchedEntityData.defineId(AbstractVehicle.class, EntityDataSerializers.COMPOUND_TAG);
+    private static final EntityDataAccessor<CompoundTag> SEAT_MANAGER = SynchedEntityData.defineId(AbstractVehicle.class, EntityDataSerializers.COMPOUND_TAG);
     protected static final EntityDataAccessor<Float> THROTTLE = SynchedEntityData.defineId(AbstractVehicle.class, EntityDataSerializers.FLOAT);
     protected static final EntityDataAccessor<Float> STEERING = SynchedEntityData.defineId(AbstractVehicle.class, EntityDataSerializers.FLOAT);
     public SeatData[] Seats;
@@ -59,23 +54,28 @@ public abstract class AbstractVehicle extends Entity implements GeoEntity {
     public float passengerXAdditional; // The current, additional, x rotation (e.g. a car's body pitch) !IN DEGREES!
     public float passengerZAdditional; // The current, additional, z rotation (e.g. a car's body pitch) !IN DEGREES!
     protected double mass = 1000;
+    public double width;
+    public double length;
+    public double height;
     protected double gravity = 9.81;
-    protected Vec3[][] collision;
-
+    protected AABB[] collision;
     protected Vec3 forward;
+    protected double RPM = 0;
 
-    protected double RPM;
+    public Map<AudioManager.SoundType, SoundEvent> engineSounds;
 
     boolean inputForward = false;
     boolean inputBackward = false;
     boolean inputRight = false;
     boolean inputLeft = false;
     boolean inputJump = false;
+    boolean inputSprint = false;
     public float throttle = 0;
     public float steeringInput = 0;
     public float steering = 0;
     public float handbrake = 0;
-    private float nextStep = 1f;
+    public float sprint = 0;
+    protected final WeakHashMap<AbstractVehicle, EnumMap<AudioManager.SoundType, SimpleEngineSound>> SOUND_MANAGER = new WeakHashMap<>();
 
     protected AbstractVehicle(EntityType<? extends Entity> entityType, Level worldIn) {
         super(entityType, worldIn);
@@ -88,6 +88,10 @@ public abstract class AbstractVehicle extends Entity implements GeoEntity {
     {
         this.throttle = power;
     }
+    public void setSprint(float input)
+    {
+        this.sprint = input;
+    }
     public void setSteering(float input)
     {
         this.steeringInput = input;
@@ -99,7 +103,7 @@ public abstract class AbstractVehicle extends Entity implements GeoEntity {
 
     @Override
     protected void defineSynchedData() {
-        this.entityData.define(SEAT_TRACKER, new CompoundTag());
+        this.entityData.define(SEAT_MANAGER, new CompoundTag());
         this.entityData.define(THROTTLE, 0F);
         this.entityData.define(STEERING, 0F);
     }
@@ -107,7 +111,7 @@ public abstract class AbstractVehicle extends Entity implements GeoEntity {
     @Override
     public void onSyncedDataUpdated(EntityDataAccessor<?> dataAccessor) {
         super.onSyncedDataUpdated(dataAccessor);
-        if (dataAccessor.equals(SEAT_TRACKER)) readSeatManager(this.entityData.get(SEAT_TRACKER));
+        if (dataAccessor.equals(SEAT_MANAGER)) readSeatManager(this.entityData.get(SEAT_MANAGER));
     }
 
     @Override
@@ -123,7 +127,7 @@ public abstract class AbstractVehicle extends Entity implements GeoEntity {
     }
 
     protected CompoundTag writeSeatManager() {
-        CompoundTag SeatManagerInitial = new CompoundTag();
+        CompoundTag SeatManagerTag = new CompoundTag();
         ListTag SeatManagerList = new ListTag();
         for (int i = 0; i < SeatManager.size(); i++) {
             CompoundTag seatTag = new CompoundTag();
@@ -131,8 +135,8 @@ public abstract class AbstractVehicle extends Entity implements GeoEntity {
             seatTag.putInt("Index", i);
             SeatManagerList.add(seatTag);
         };
-        SeatManagerInitial.put("seatList",SeatManagerList);
-        return SeatManagerInitial;
+        SeatManagerTag.put("seatList",SeatManagerList);
+        return SeatManagerTag;
     }
 
     protected void readSeatManager(CompoundTag tag) {
@@ -197,10 +201,6 @@ public abstract class AbstractVehicle extends Entity implements GeoEntity {
             this.setYRot( (float) this.lerpYaw);
             this.setXRot((float) this.lerpPitch);
         }
-
-        // This probably could be removed in favour of the updatePassengerPosition method
-        passenger.setXRot(this.getXRot());
-        passenger.setYRot(this.getYRot());
     }
 
     @Override
@@ -227,15 +227,25 @@ public abstract class AbstractVehicle extends Entity implements GeoEntity {
                 inputLeft = Minecraft.getInstance().options.keyLeft.isDown();
 
                 inputJump = Minecraft.getInstance().options.keyJump.isDown();
+                inputSprint = Minecraft.getInstance().options.keySprint.isDown();
 
                 if ((inputForward && inputBackward ? 2f : inputForward ? 1f : inputBackward ? -1f : 0f) != throttle) PacketHandler.INSTANCE.sendToServer(new MessageThrottle(inputForward && inputBackward ? 2f : inputForward ? 1f : inputBackward ? -1f : 0f));
                 if ((inputLeft ? -1f : inputRight ? 1f : 0f) != steeringInput) PacketHandler.INSTANCE.sendToServer(new MessageSteering(inputLeft ? -1f : inputRight ? 1f : 0f));
                 if ((inputJump ? 1f : 0f) != handbrake) PacketHandler.INSTANCE.sendToServer(new MessageHandbrake(inputJump ? 1f : 0f));
+                if ((inputSprint ? 1f : 0f) != sprint) PacketHandler.INSTANCE.sendToServer(new MessageSprint(inputSprint ? 1f : 0f));
                 this.setThrottle(inputForward && inputBackward ? 2f : inputForward ? 1f : inputBackward ? -1f : 0f);
                 this.setSteering(inputLeft ? -1f : inputRight ? 1f : 0f);
                 this.setHandbrake(inputJump ? 1f : 0f);
+                this.setSprint(inputSprint ? 1f : 0f);
 
 //                UpdateCamera(deltaTime);
+
+                this.readSeatManager(this.entityData.get(SEAT_MANAGER));
+                if(engineSounds.containsKey(AudioManager.SoundType.ENGINE_IDLE) && engineSounds.containsKey(AudioManager.SoundType.ENGINE_MOVING) && !SeatManager.get(0).equals(UUID.fromString("00000000-0000-0000-0000-000000000000")))
+                {
+                    playEngineSound(SOUND_MANAGER, this, AudioManager.SoundType.ENGINE_IDLE, this.engineSounds.get(AudioManager.SoundType.ENGINE_IDLE)).setVolume(0f);
+                    playEngineSound(SOUND_MANAGER, this, AudioManager.SoundType.ENGINE_MOVING, this.engineSounds.get(AudioManager.SoundType.ENGINE_MOVING)).setVolume(0f);
+                }
             }
         }
     }
@@ -279,7 +289,7 @@ public abstract class AbstractVehicle extends Entity implements GeoEntity {
                 double closestDistance = 0;
                 for (int i = 0; i < Seats.length; i++) {
                     SeatData seat = Seats[i];
-                    if (SeatManager.get(i) == UUID.fromString("00000000-0000-0000-0000-000000000000")) continue;
+                    if (!SeatManager.get(i).equals(UUID.fromString("00000000-0000-0000-0000-000000000000"))) continue;
 
                     Vec3 seatVec = seat.seatOffset.yRot(-this.getYRot() * ((float)Math.PI / 180F)).add(this.position());
                     double distance = player.distanceToSqr(seatVec.x, seatVec.y - player.getBbHeight() / 2F, seatVec.z);
@@ -292,7 +302,7 @@ public abstract class AbstractVehicle extends Entity implements GeoEntity {
                 LOGGER.info("Seat info: " + String.valueOf(closestSeatIndex) + " - " + player.getName() + " - " + (player.level().isClientSide ? "Client" : "Server"));
                 LOGGER.info("Chosen 'closest' seat: " + String.valueOf(closestSeatIndex) + " with distance of " + String.valueOf(closestDistance) + " metres");
                 SeatManager.set(closestSeatIndex, player.getUUID());
-                this.entityData.set(SEAT_TRACKER, writeSeatManager(), true);
+                this.entityData.set(SEAT_MANAGER, writeSeatManager(), true);
                 if (closestSeatIndex != -1) player.startRiding(this);
                 return InteractionResult.SUCCESS;
             }
@@ -327,9 +337,13 @@ public abstract class AbstractVehicle extends Entity implements GeoEntity {
         if (!entity.level().isClientSide && SeatManager.contains(entity.getUUID())) {
             if (SeatManager.indexOf(entity.getUUID()) == 0) throttle = 0;
             SeatManager.set(SeatManager.indexOf(entity.getUUID()), UUID.fromString("00000000-0000-0000-0000-000000000000"));
-            this.entityData.set(SEAT_TRACKER, writeSeatManager());
+            this.entityData.set(SEAT_MANAGER, writeSeatManager());
         }
         LOGGER.info(SeatManager.toString() + " - " + (this.level().isClientSide ? "Client" : "Server"));
+    }
+
+    public boolean isCollidingWithBlock(Vec3 pos, AABB aabb) {
+        return aabb.move(pos).intersects(new AABB(new BlockPos(((int) pos.x), (int) pos.y, (int) pos.z)));
     }
 
     // Overriding the move method, because 'collide' is private
@@ -356,6 +370,7 @@ public abstract class AbstractVehicle extends Entity implements GeoEntity {
 //
 //            motion = this.maybeBackOffFromEdge(motion, moverType);
 //            Vec3 vec3 = this.doCollide(motion);
+//            //Vec3 vec3 = this.isColliding(this.position().add(motion), );
 //            double d0 = vec3.lengthSqr();
 //            if (d0 > 1.0E-7D) {
 //                if (this.fallDistance != 0.0F && d0 >= 1.0D) {
@@ -447,10 +462,7 @@ public abstract class AbstractVehicle extends Entity implements GeoEntity {
         double d1 = motion.x;
         double d2 = motion.y;
         double d3 = motion.z;
-        for (Vec3[] offset : collision) {
-            Vec3 start = offset[0].yRot(-this.getYRot() * (Mth.PI/180));
-            Vec3 end = offset[1].yRot(-this.getYRot() * (Mth.PI/180));
-            AABB aabb = new AABB(this.getX() + start.x, this.getY() + start.y, this.getZ() + start.z, this.getX() + end.x, this.getY() + end.y, this.getZ() + end.z);
+        for (AABB aabb : collision) {
             Vec3 checkedMotion = doCollisionCheckForAABB(aabb, motion);
             if (checkedMotion.x == 0) d1 = 0;
             if (checkedMotion.y == 0) d2 = 0;
@@ -489,15 +501,12 @@ public abstract class AbstractVehicle extends Entity implements GeoEntity {
 
     @Override
     public void registerControllers(final AnimatableManager.ControllerRegistrar controllers) {
-        controllers.add(new AnimationController<>(this, "Default", 5, this::animController));
     }
-
-    protected <E extends AbstractVehicle> PlayState animController(final AnimationState<E> event) {
-        return event.setAndContinue(ANIM);
-    }
-
     @Override
     public AnimatableInstanceCache getAnimatableInstanceCache() {
+        if (this.geoCache == null) {
+            this.geoCache = GeckoLibUtil.createInstanceCache(this);
+        }
         return this.geoCache;
     }
 }

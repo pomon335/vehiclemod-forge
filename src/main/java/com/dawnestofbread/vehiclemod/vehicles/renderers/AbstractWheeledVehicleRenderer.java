@@ -1,54 +1,46 @@
 package com.dawnestofbread.vehiclemod.vehicles.renderers;
 
-import com.dawnestofbread.vehiclemod.utils.Maths;
 import com.dawnestofbread.vehiclemod.WheeledVehicle;
+import com.dawnestofbread.vehiclemod.utils.WheelData;
 import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.VertexConsumer;
+import com.mojang.math.Axis;
 import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
-import net.minecraft.util.Mth;
-import software.bernie.geckolib.cache.object.GeoBone;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
+import org.jetbrains.annotations.NotNull;
 import software.bernie.geckolib.model.GeoModel;
 
 import javax.annotation.Nullable;
-import java.util.Date;
 
 public abstract class AbstractWheeledVehicleRenderer<T extends WheeledVehicle> extends AbstractVehicleRenderer<T> {
     public AbstractWheeledVehicleRenderer(EntityRendererProvider.Context renderManager, GeoModel<T> model) {
         super(renderManager, model);
     }
 
-    protected long lastFrame;
-
     @Override
-    public void render(@Nullable T entity, float entityYaw, float partialTick, PoseStack poseStack, MultiBufferSource bufferSource, int packedLight) {
+    public void render(@Nullable T entity, float entityYaw, float partialTick, PoseStack poseStack, @NotNull MultiBufferSource bufferSource, int packedLight) {
         if (entity == null) return;
         super.render(entity, entityYaw, partialTick, poseStack, bufferSource, packedLight);
 
-        double deltaTime = (double) (new Date().getTime() - lastFrame) / 1000;
-        lastFrame = new Date().getTime();
+        // Transform PoseStack
+        poseStack.pushPose();
+        poseStack.translate(-entity.getX(), -entity.getY(), -entity.getZ());
+        poseStack.mulPose(Axis.YP.rotationDegrees(entity.getYRot()));
 
-        GeoBone body = this.getGeoModel().getBone("body").orElse(null);
-        if (body != null) {
-            float newXBodyRot = Maths.fInterpToExp(body.getRotX(), (float) (entity.weightTransferX * entity.maxBodyPitch) * (Mth.PI/180), 1.5f, (float) deltaTime);
-            float newZBodyRot = Maths.fInterpToExp(body.getRotZ(), (float) (entity.weightTransferZ * entity.maxBodyRoll) * (Mth.PI/180), 1.5f, (float) deltaTime);
-            body.setRotX(newXBodyRot);
-            body.setRotZ(newZBodyRot);
-            entity.passengerXAdditional = newXBodyRot / (Mth.PI/180);
-            entity.passengerZAdditional = newZBodyRot / (Mth.PI/180);
+        // Create a debug render buffer
+        VertexConsumer vertexConsumer = bufferSource.getBuffer(RenderType.lines());
+        for (WheelData wheel : entity.Wheels) {
+            Vec3 offsetStart = entity.position().add(wheel.currentRelativePosition.scale(0.5).add(new Vec3(-wheel.width / 2, -wheel.radius,-wheel.radius).yRot(-entity.getYRot() * ((float)Math.PI / 180F)).xRot(-entity.getXRot() * ((float)Math.PI / 180F))));
+            Vec3 offsetEnd = entity.position().add(wheel.currentRelativePosition.scale(0.5).add(new Vec3(wheel.width / 2, wheel.radius,wheel.radius).yRot(-entity.getYRot() * ((float)Math.PI / 180F)).xRot(-entity.getXRot() * ((float)Math.PI / 180F))));
+            renderBox(poseStack, vertexConsumer, new AABB(offsetStart.x , offsetStart.y, offsetStart.z, offsetEnd.x, offsetEnd.y, offsetEnd.z), 1,0,0);
         }
+        Vec3 offsetStart = new Vec3(-entity.width / 2, 0, -entity.length / 2);
+        Vec3 offsetEnd = new Vec3(entity.width / 2, entity.height, entity.length / 2);
+        renderBox(poseStack, vertexConsumer, new AABB(offsetStart.x , offsetStart.y, offsetStart.z, offsetEnd.x, offsetEnd.y, offsetEnd.z), 0,0,1);
 
-        for (int i = 0; i < entity.Wheels.length; i++) {
-            GeoBone bone = this.getGeoModel().getBone("wheel" + String.valueOf(i)).orElse(null);
-            if (bone != null) {
-                bone.setRotX(bone.getRotX() - (float) (entity.Wheels[i].angularVelocity * deltaTime));
-                if (entity.Wheels[i].affectedBySteering) bone.setRotY(Maths.fInterpToExp(bone.getRotY(), (float) - (entity.steering * entity.steeringAngle) * (Mth.PI/180), 4.25f, (float) deltaTime));
-            }
-
-        }
-        this.drawLine(poseStack, bufferSource, entity.position().add(entity.frontAxle), entity.position().add(entity.rearAxle), 0xFF0000, 0xFF00FF);
-        for (int i = 0; i < entity.Wheels.length; i++) {
-            this.drawLine(poseStack, bufferSource, entity.position().add(entity.Wheels[i].startingRelativePosition), entity.position().add(entity.Wheels[i].startingRelativePosition).add(entity.Wheels[i].startingRelativePosition.x < 0 ? -1 : 1,0,0), 0xFF0000, 0xFF00FF);
-            this.drawLine(poseStack, bufferSource, entity.position().add(entity.Wheels[i].startingRelativePosition), entity.position().add(entity.Wheels[i].startingRelativePosition).subtract(0,entity.Wheels[i].radius,0), 0xFF0000, 0xFF00FF);
-        }
+        poseStack.popPose();
     }
 }

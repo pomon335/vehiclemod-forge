@@ -1,5 +1,18 @@
 {
-    "open_chest": {
-      "sounds": [ "mymod:open_chest_sound_file" ]
-    }
+  "scooter.moving": {
+    "sounds": [
+      {
+        "name": "vehiclemod:loops/scooter/lo",
+        "stream": true
+      }
+    ]
+  },
+  "scooter.idle": {
+    "sounds": [
+      {
+        "name": "vehiclemod:loops/scooter/idle",
+        "stream": true
+      }
+    ]
   }
+}

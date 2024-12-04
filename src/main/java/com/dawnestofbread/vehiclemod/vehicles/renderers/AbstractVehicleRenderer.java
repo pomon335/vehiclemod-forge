@@ -1,16 +1,12 @@
 package com.dawnestofbread.vehiclemod.vehicles.renderers;
 
 import com.dawnestofbread.vehiclemod.AbstractVehicle;
-import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
 import com.mojang.math.Axis;
-import net.minecraft.client.Camera;
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
-import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
-import net.minecraft.world.phys.Vec3;
-import org.joml.Matrix4f;
+import net.minecraft.world.phys.AABB;
+import org.jetbrains.annotations.NotNull;
 import software.bernie.geckolib.model.GeoModel;
 import software.bernie.geckolib.renderer.GeoEntityRenderer;
 
@@ -21,7 +17,7 @@ public abstract class AbstractVehicleRenderer<T extends AbstractVehicle> extends
     }
 
     @Override
-    public void render(T entity, float entityYaw, float partialTick, PoseStack poseStack, MultiBufferSource bufferSource, int packedLight) {
+    public void render(@NotNull T entity, float entityYaw, float partialTick, PoseStack poseStack, @NotNull MultiBufferSource bufferSource, int packedLight) {
         poseStack.pushPose();
         poseStack.mulPose(Axis.YP.rotationDegrees(-entityYaw));
         super.render(entity, entityYaw, partialTick, poseStack, bufferSource, packedLight);
@@ -30,36 +26,30 @@ public abstract class AbstractVehicleRenderer<T extends AbstractVehicle> extends
         //poseStack.translate(animatable.translateOffset.x, animatable.translateOffset.y, animatable.translateOffset.z);
     }
 
-    public void drawLine(PoseStack stack, MultiBufferSource bufferSource, Vec3 from, Vec3 to, int startColour, int endColour)
-    {
-        RenderSystem.lineWidth(5.0f);
-        RenderSystem.enableDepthTest();
-        VertexConsumer builder = bufferSource.getBuffer(RenderType.LINES);
+    protected void renderBox(PoseStack poseStack, VertexConsumer vertexConsumer, AABB aabb, float red, float green, float blue) {
+        PoseStack.Pose pose = poseStack.last();
 
-        Matrix4f matrix = stack.last().pose();
+        // Bottom edges
+        line(vertexConsumer, pose, aabb.minX, aabb.minY, aabb.minZ, aabb.maxX, aabb.minY, aabb.minZ, red, green, blue);
+        line(vertexConsumer, pose, aabb.maxX, aabb.minY, aabb.minZ, aabb.maxX, aabb.minY, aabb.maxZ, red, green, blue);
+        line(vertexConsumer, pose, aabb.maxX, aabb.minY, aabb.maxZ, aabb.minX, aabb.minY, aabb.maxZ, red, green, blue);
+        line(vertexConsumer, pose, aabb.minX, aabb.minY, aabb.maxZ, aabb.minX, aabb.minY, aabb.minZ, red, green, blue);
 
-        Camera camera = Minecraft.getInstance().gameRenderer.getMainCamera();
+        // Top edges
+        line(vertexConsumer, pose, aabb.minX, aabb.maxY, aabb.minZ, aabb.maxX, aabb.maxY, aabb.minZ, red, green, blue);
+        line(vertexConsumer, pose, aabb.maxX, aabb.maxY, aabb.minZ, aabb.maxX, aabb.maxY, aabb.maxZ, red, green, blue);
+        line(vertexConsumer, pose, aabb.maxX, aabb.maxY, aabb.maxZ, aabb.minX, aabb.maxY, aabb.maxZ, red, green, blue);
+        line(vertexConsumer, pose, aabb.minX, aabb.maxY, aabb.maxZ, aabb.minX, aabb.maxY, aabb.minZ, red, green, blue);
 
-        float sred = (float) (startColour >> 16 & 255) / 255.0F;
-        float sgreen = (float) (startColour >> 8 & 255) / 255.0F;
-        float sblue = (float) (startColour & 255) / 255.0F;
-        float ered = (float) (endColour >> 16 & 255) / 255.0F;
-        float egreen = (float) (endColour >> 8 & 255) / 255.0F;
-        float eblue = (float) (endColour & 255) / 255.0F;
+        // Vertical edges
+        line(vertexConsumer, pose, aabb.minX, aabb.minY, aabb.minZ, aabb.minX, aabb.maxY, aabb.minZ, red, green, blue);
+        line(vertexConsumer, pose, aabb.maxX, aabb.minY, aabb.minZ, aabb.maxX, aabb.maxY, aabb.minZ, red, green, blue);
+        line(vertexConsumer, pose, aabb.maxX, aabb.minY, aabb.maxZ, aabb.maxX, aabb.maxY, aabb.maxZ, red, green, blue);
+        line(vertexConsumer, pose, aabb.minX, aabb.minY, aabb.maxZ, aabb.minX, aabb.maxY, aabb.maxZ, red, green, blue);
+    }
 
-        from = from.subtract(camera.getPosition());
-        to = to.subtract(camera.getPosition());
-
-        // Add vertices for the line
-        builder.vertex(matrix, (float) from.x, (float) from.y, (float) from.z)
-                .color(sred, sgreen, sblue, 1f)
-                .normal(0,0,0)
-                .endVertex();
-        builder.vertex(matrix, (float) to.x, (float) to.y, (float) to.z)
-                .color(ered, egreen, eblue, 1f)
-                .normal(0,0,0)
-                .endVertex();
-        RenderSystem.lineWidth(1.0f);
-        RenderSystem.disableDepthTest();
+    private void line(VertexConsumer vertexConsumer, PoseStack.Pose pose, double x1, double y1, double z1, double x2, double y2, double z2, float red, float green, float blue) {
+        vertexConsumer.vertex(pose.pose(), (float) x1, (float) y1, (float) z1).color(red, green, blue, 1.0f).normal(pose.normal(), 0.0F, 1.0F, 0.0F).endVertex();
+        vertexConsumer.vertex(pose.pose(), (float) x2, (float) y2, (float) z2).color(red, green, blue, 1.0f).normal(pose.normal(), 0.0F, 1.0F, 0.0F).endVertex();
     }
 }
