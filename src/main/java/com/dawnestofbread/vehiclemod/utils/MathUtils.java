@@ -1,6 +1,6 @@
 package com.dawnestofbread.vehiclemod.utils;
 
-public class Maths {
+public class MathUtils {
     public static float fInterpTo(float currentValue, float targetValue, float interpSpeed, float deltaTime) {
         // Calculate the difference between the current and target values
         float difference = targetValue - currentValue;
@@ -33,6 +33,14 @@ public class Maths {
     }
 
     public static float fInterpToExp(float currentValue, float targetValue, float interpSpeed, float deltaTime) {
+        // Exponential decay formula
+        float t = 1.0f - (float)Math.pow(0.5, interpSpeed * deltaTime);
+
+        // Interpolate towards the target
+        return currentValue + (targetValue - currentValue) * t;
+    }
+
+    public static double dInterpToExp(double currentValue, double targetValue, double interpSpeed, double deltaTime) {
         // Exponential decay formula
         float t = 1.0f - (float)Math.pow(0.5, interpSpeed * deltaTime);
 

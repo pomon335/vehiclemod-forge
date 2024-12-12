@@ -18,8 +18,4 @@ import java.util.stream.Collectors;
 @Mod.EventBusSubscriber(modid = "vehiclemod", bus = Mod.EventBusSubscriber.Bus.MOD)
 public class Config
 {
-    @SubscribeEvent
-    static void onLoad(final ModConfigEvent event)
-    {
-    }
 }

@@ -10,7 +10,7 @@ import net.minecraftforge.registries.ForgeRegistries;
 import net.minecraftforge.registries.RegistryObject;
 
 public class VehicleRegistry {
-    public static String MODID = "vehiclemod";
+    public static final String MODID = "vehiclemod";
     public static void RegisterAllVehicles() {
         ENTITIES.register(FMLJavaModLoadingContext.get().getModEventBus());
     }

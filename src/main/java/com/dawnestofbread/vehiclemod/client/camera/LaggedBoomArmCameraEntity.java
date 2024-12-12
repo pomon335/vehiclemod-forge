@@ -9,7 +9,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 
 public class LaggedBoomArmCameraEntity extends Camera {
-    LocalPlayer target;
+    final LocalPlayer target;
 
     public LaggedBoomArmCameraEntity(LocalPlayer target) {
         super();

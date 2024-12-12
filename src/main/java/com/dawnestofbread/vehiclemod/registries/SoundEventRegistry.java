@@ -8,7 +8,7 @@ import net.minecraftforge.registries.ForgeRegistries;
 import net.minecraftforge.registries.RegistryObject;
 
 public class SoundEventRegistry {
-    public static String MODID = "vehiclemod";
+    public static final String MODID = "vehiclemod";
     public static void RegisterAllSoundEvents() {
         SOUND_EVENTS.register(FMLJavaModLoadingContext.get().getModEventBus());
     }

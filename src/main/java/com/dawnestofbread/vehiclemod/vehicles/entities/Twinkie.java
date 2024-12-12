@@ -5,7 +5,6 @@ import com.dawnestofbread.vehiclemod.client.audio.AudioManager;
 import com.dawnestofbread.vehiclemod.utils.Curve;
 import com.dawnestofbread.vehiclemod.utils.SeatData;
 import com.dawnestofbread.vehiclemod.utils.WheelData;
-import net.minecraft.sounds.SoundEvent;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.level.Level;
@@ -115,37 +114,37 @@ public class Twinkie extends AbstractMotorcycle {
     // Create the wheels and set their parameters
     @Override
     protected void setupWheels() {
-        Wheels = new WheelData[2];
+        Wheels = new ArrayList<>(2);
 
-        Wheels[0] = new WheelData();
-        Wheels[1] = new WheelData();
+        Wheels.add(0, new WheelData());
+        Wheels.add(1, new WheelData());
 
         // Divide this by 16, because it works better and results in more realistic proportions
-        Wheels[0].radius = 0.253125;
-        Wheels[1].radius = 0.253125;
+        Wheels.get(0).radius = 0.253125;
+        Wheels.get(1).radius = 0.253125;
 
-        Wheels[0].width = 0.203125;
-        Wheels[1].width = 0.203125;
+        Wheels.get(0).width = 0.203125;
+        Wheels.get(1).width = 0.203125;
 
-        Wheels[0].suspensionRaise = -0.05;
-        Wheels[1].suspensionRaise = -0.05;
-        Wheels[0].suspensionDrop = 0.12;
-        Wheels[1].suspensionDrop = 0.12;
+        Wheels.get(0).springMinLength = 0.56875;
+        Wheels.get(1).springMinLength = 0.56875;
+        Wheels.get(0).springMaxLength = 0.63125;
+        Wheels.get(1).springMaxLength = 0.63125;
 
         // And this
-        Wheels[0].startingRelativePosition = new Vec3(0.002675, 0.522025, 1.637475);
-        Wheels[1].startingRelativePosition = new Vec3(0.002675, 0.522025, -1.362525);
+        Wheels.get(0).startingRelativePosition = new Vec3(0.002675, 0.522025, 1.637475);
+        Wheels.get(1).startingRelativePosition = new Vec3(0.002675, 0.522025, -1.362525);
 
-        Wheels[0].affectedBySteering = true;
+        Wheels.get(0).affectedBySteering = true;
 
-        Wheels[0].mass = 10;
-        Wheels[1].mass = 10;
+        Wheels.get(0).mass = 10;
+        Wheels.get(1).mass = 10;
 
-        Wheels[1].affectedByEngine = true;
+        Wheels.get(1).affectedByEngine = true;
 
-        Wheels[0].affectedByBrake = true;
-        Wheels[1].affectedByBrake = true;
+        Wheels.get(0).affectedByBrake = true;
+        Wheels.get(1).affectedByBrake = true;
 
-        Wheels[1].affectedByHandbrake = true;
+        Wheels.get(1).affectedByHandbrake = true;
     }
 }

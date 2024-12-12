@@ -3,7 +3,7 @@ package com.dawnestofbread.vehiclemod.utils;
 import java.util.List;
 
 public class Curve {
-    public List<Double> curvePoints;
+    public final List<Double> curvePoints;
     public Curve(List<Double> newCurvePoints) {
         this.curvePoints = newCurvePoints;
     }

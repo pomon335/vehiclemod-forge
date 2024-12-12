@@ -1,16 +1,13 @@
 package com.dawnestofbread.vehiclemod.vehicles.entities;
 
 import com.dawnestofbread.vehiclemod.WheeledVehicle;
-import com.dawnestofbread.vehiclemod.client.audio.AudioManager;
 import com.dawnestofbread.vehiclemod.utils.Curve;
 import com.dawnestofbread.vehiclemod.utils.SeatData;
 import com.dawnestofbread.vehiclemod.utils.WheelData;
-import net.minecraft.sounds.SoundEvent;
 import net.minecraft.world.entity.*;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
-import software.bernie.geckolib.core.animatable.instance.AnimatableInstanceCache;
 
 import java.util.*;
 
@@ -124,54 +121,48 @@ public class Annihilator extends WheeledVehicle {
     // Create the wheels and set their parameters
     @Override
     protected void setupWheels() {
-        Wheels = new WheelData[4];
+        Wheels = new ArrayList<>(4);
 
-        Wheels[0] = new WheelData();
-        Wheels[1] = new WheelData();
-        Wheels[2] = new WheelData();
-        Wheels[3] = new WheelData();
+        for (int i1 = 0; i1 < 4; i1++) {
+            Wheels.add(i1, new WheelData());
+        }
 
         // Divide this by 16, because it works better and results in more realistic proportions
-        Wheels[0].radius = 0.390625;
-        Wheels[1].radius = 0.390625;
-        Wheels[2].radius = 0.390625;
-        Wheels[3].radius = 0.390625;
+        for (int i = 0; i < 4; i++) {
+            Wheels.get(i).radius = 0.390625;
+        }
 
-        Wheels[0].width = 0.3125;
-        Wheels[1].width = 0.3125;
-        Wheels[2].width = 0.3125;
-        Wheels[3].width = 0.3125;
+        for (int j = 0; j < 4; j++) {
+            Wheels.get(j).width = 0.3125;
+        }
 
-        Wheels[0].suspensionRaise = -0.05;
-        Wheels[1].suspensionRaise = -0.05;
-        Wheels[2].suspensionRaise = -0.05;
-        Wheels[3].suspensionRaise = -0.05;
-        Wheels[0].suspensionDrop = 0.12;
-        Wheels[1].suspensionDrop = 0.12;
-        Wheels[2].suspensionDrop = 0.12;
-        Wheels[3].suspensionDrop = 0.12;
+        for (int i = 0; i < 4; i++) {
+            Wheels.get(i).springMinLength = 0.56875;
+        }
+        for (int i = 0; i < 4; i++) {
+            Wheels.get(i).springMaxLength = 0.63125;
+        }
 
         // And this
-        Wheels[0].startingRelativePosition = new Vec3(1.9125, 0.803125, 3.747775);
-        Wheels[1].startingRelativePosition = new Vec3(-1.9125, 0.803125, 3.747775);
-        Wheels[2].startingRelativePosition = new Vec3(1.9125, 0.803125, -3.002225);
-        Wheels[3].startingRelativePosition = new Vec3(-1.9125, 0.803125, -3.002225);
+        Wheels.get(0).startingRelativePosition = new Vec3(1.9125, 0.803125, 3.747775);
+        Wheels.get(1).startingRelativePosition = new Vec3(-1.9125, 0.803125, 3.747775);
+        Wheels.get(2).startingRelativePosition = new Vec3(1.9125, 0.803125, -3.002225);
+        Wheels.get(3).startingRelativePosition = new Vec3(-1.9125, 0.803125, -3.002225);
 
-        Wheels[0].affectedBySteering = true;
-        Wheels[1].affectedBySteering = true;
+        Wheels.get(0).affectedBySteering = true;
+        Wheels.get(1).affectedBySteering = true;
 
-        Wheels[0].mass = 50;
-        Wheels[1].mass = 50;
-        Wheels[2].mass = 50;
-        Wheels[3].mass = 50;
+        for (int i = 0; i < 4; i++) {
+            Wheels.get(i).mass = 50;
+        }
 
-        Wheels[2].affectedByEngine = true;
-        Wheels[3].affectedByEngine = true;
+        Wheels.get(2).affectedByEngine = true;
+        Wheels.get(3).affectedByEngine = true;
 
-        Wheels[2].affectedByBrake = true;
-        Wheels[3].affectedByBrake = true;
+        Wheels.get(2).affectedByBrake = true;
+        Wheels.get(3).affectedByBrake = true;
 
-        Wheels[2].affectedByHandbrake = true;
-        Wheels[3].affectedByHandbrake = true;
+        Wheels.get(2).affectedByHandbrake = true;
+        Wheels.get(3).affectedByHandbrake = true;
     }
 }

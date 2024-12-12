@@ -1,8 +1,50 @@
 {
 	"format_version": "1.8.0",
 	"animations": {
-		"animation.twinkie.programabble": {
-			"loop": true
+		"programmable": {
+			"loop": true,
+			"animation_length": 0.25,
+			"bones": {
+				"root": {
+					"rotation": {
+						"vector": ["query.root_pitch", 0, "query.root_roll"]
+					}
+				},
+				"wheel0": {
+					"rotation": {
+						"vector": ["query.wheel0_pitch", "query.wheel0_yaw", 0]
+					},
+					"position": {
+						"vector": [0, "query.wheel0_y", 0]
+					}
+				},
+				"wheel1": {
+					"rotation": {
+						"vector": ["query.wheel1_pitch", "query.wheel1_yaw", 0]
+					},
+					"position": {
+						"vector": [0, "query.wheel1_y", 0]
+					}
+				},
+				"body": {
+					"rotation": {
+						"vector": ["query.body_pitch", 0, "query.body_roll"]
+					},
+					"position": {
+						"vector": [0, "query.body_y", 0]
+					}
+				},
+				"exhaust1": {
+					"rotation": {
+						"vector": ["query.is_engine_on * math.random(-1,1)", "query.is_engine_on * math.random(-1,1)", "query.is_engine_on * math.random(-1,1)"]
+					}
+				},
+				"exhaust2": {
+					"rotation": {
+						"vector": ["query.is_engine_on * math.random(-1,1)", "query.is_engine_on * math.random(-1,1)", "query.is_engine_on * math.random(-1,1)"]
+					}
+				}
+			}
 		}
 	},
 	"geckolib_format_version": 2

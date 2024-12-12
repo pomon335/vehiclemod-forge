@@ -38,6 +38,7 @@ public class SimpleEngineSound extends AbstractTickableSoundInstance {
         this.volume = (float) volume;
         return this;
     }
+    @SuppressWarnings("UnusedReturnValue")
     public SimpleEngineSound setPitch(double pitch) {
         this.pitch = (float) pitch;
         return this;
@@ -51,7 +52,7 @@ public class SimpleEngineSound extends AbstractTickableSoundInstance {
 
         AbstractVehicle vehicle = this.vehicleRef.get();
         Player player = this.playerRef.get();
-        if(vehicle == null || player == null || vehicle.SeatManager.get(0).equals(UUID.fromString("00000000-0000-0000-0000-000000000000")) || !vehicle.isAlive())
+        if(vehicle == null || player == null || !vehicle.isEngineOn() || !vehicle.isAlive())
         {
             this.stop();
             return;
@@ -59,18 +60,6 @@ public class SimpleEngineSound extends AbstractTickableSoundInstance {
 
         this.attenuation = vehicle.equals(player.getVehicle()) ? Attenuation.NONE : Attenuation.LINEAR;
 
-//        if(!vehicle.equals(player.getVehicle()))
-//        {
-//            this.x = (float) (vehicle.getX() + (player.getX() - vehicle.getX()) * 0.65);
-//            this.y = (float) (vehicle.getY() + (player.getY() - vehicle.getY()) * 0.65);
-//            this.z = (float) (vehicle.getZ() + (player.getZ() - vehicle.getZ()) * 0.65);
-//        }
-//        else
-//        {
-//            this.x = vehicle.getX();
-//            this.y = vehicle.getY();
-//            this.z = vehicle.getZ();
-//        }
         this.x = vehicle.getX();
         this.y = vehicle.getY();
         this.z = vehicle.getZ();

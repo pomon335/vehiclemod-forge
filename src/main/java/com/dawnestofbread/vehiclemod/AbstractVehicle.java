@@ -3,9 +3,9 @@ package com.dawnestofbread.vehiclemod;
 import com.dawnestofbread.vehiclemod.client.audio.AudioManager;
 import com.dawnestofbread.vehiclemod.client.audio.SimpleEngineSound;
 import com.dawnestofbread.vehiclemod.network.*;
-import com.dawnestofbread.vehiclemod.utils.Maths;
-import com.eliotlash.mclib.utils.MathHelper;
+import com.dawnestofbread.vehiclemod.utils.MathUtils;
 import com.dawnestofbread.vehiclemod.utils.SeatData;
+import com.eliotlash.mclib.math.functions.classic.Abs;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
@@ -15,6 +15,7 @@ import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.sounds.SoundEvent;
+import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.Entity;
@@ -30,52 +31,62 @@ import net.minecraftforge.eventbus.api.SubscribeEvent;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import software.bernie.geckolib.animatable.GeoEntity;
+import software.bernie.geckolib.core.animatable.GeoAnimatable;
 import software.bernie.geckolib.core.animatable.instance.AnimatableInstanceCache;
 import software.bernie.geckolib.core.animation.AnimatableManager;
+import software.bernie.geckolib.core.animation.AnimationController;
+import software.bernie.geckolib.core.animation.AnimationState;
 import software.bernie.geckolib.core.animation.RawAnimation;
+import software.bernie.geckolib.core.object.PlayState;
 import software.bernie.geckolib.util.GeckoLibUtil;
 
 import java.util.*;
 
-import static com.dawnestofbread.vehiclemod.client.audio.AudioManager.playEngineSound;
+import static com.dawnestofbread.vehiclemod.client.audio.AudioManager.*;
 
 public abstract class AbstractVehicle extends Entity implements GeoEntity {
     public static final Logger LOGGER = VehicleMod.LOGGER;
-    private AnimatableInstanceCache geoCache;
-    protected static final RawAnimation ANIM = RawAnimation.begin().thenLoop("programmable");
-
-    public Vec3 translateOffset = new Vec3(0,0,0);
-    public List<UUID> SeatManager;
-    private static final EntityDataAccessor<CompoundTag> SEAT_MANAGER = SynchedEntityData.defineId(AbstractVehicle.class, EntityDataSerializers.COMPOUND_TAG);
     protected static final EntityDataAccessor<Float> THROTTLE = SynchedEntityData.defineId(AbstractVehicle.class, EntityDataSerializers.FLOAT);
     protected static final EntityDataAccessor<Float> STEERING = SynchedEntityData.defineId(AbstractVehicle.class, EntityDataSerializers.FLOAT);
+    private static final EntityDataAccessor<CompoundTag> SEAT_MANAGER = SynchedEntityData.defineId(AbstractVehicle.class, EntityDataSerializers.COMPOUND_TAG);
+    protected final WeakHashMap<AbstractVehicle, EnumMap<AudioManager.SoundType, SimpleEngineSound>> SOUND_MANAGER = new WeakHashMap<>();
+    public List<UUID> SeatManager;
     public SeatData[] Seats;
-
-    public float passengerXAdditional; // The current, additional, x rotation (e.g. a car's body pitch) !IN DEGREES!
-    public float passengerZAdditional; // The current, additional, z rotation (e.g. a car's body pitch) !IN DEGREES!
-    protected double mass = 1000;
+    public float passengerXRot;
+    public float passengerZRot;
     public double width;
     public double length;
     public double height;
-    protected double gravity = 9.81;
+    public Map<AudioManager.SoundType, SoundEvent> engineSounds;
+    public float throttle = 0;
+    public float steeringInput = 0;
+    public float steering = 0;
+    public float handbrake = 0;
+    public float sprint = 0;
+    protected double RPM = 0;
     protected AABB[] collision;
     protected Vec3 forward;
-    protected double RPM = 0;
-
-    public Map<AudioManager.SoundType, SoundEvent> engineSounds;
-
+    protected final double gravity = 9.81;
+    protected long lastTick;
+    protected int lerpSteps;
+    protected double lerpX;
+    protected double lerpXRot;
+    protected double lerpY;
+    protected double lerpYRot;
+    protected double lerpZ;
+    protected double mass = 1000;
     boolean inputForward = false;
     boolean inputBackward = false;
     boolean inputRight = false;
     boolean inputLeft = false;
     boolean inputJump = false;
     boolean inputSprint = false;
-    public float throttle = 0;
-    public float steeringInput = 0;
-    public float steering = 0;
-    public float handbrake = 0;
-    public float sprint = 0;
-    protected final WeakHashMap<AbstractVehicle, EnumMap<AudioManager.SoundType, SimpleEngineSound>> SOUND_MANAGER = new WeakHashMap<>();
+    private Vec3 translationOffset = new Vec3(0, 0, 0);
+    private float zRot;
+
+    public boolean isEngineOn() {
+        return !SeatManager.get(0).equals(UUID.fromString("00000000-0000-0000-0000-000000000000"));
+    }
 
     protected AbstractVehicle(EntityType<? extends Entity> entityType, Level worldIn) {
         super(entityType, worldIn);
@@ -84,21 +95,42 @@ public abstract class AbstractVehicle extends Entity implements GeoEntity {
         this.setupSeats();
     }
 
-    public void setThrottle(float power)
-    {
-        this.throttle = power;
+    protected abstract void setupSeats();
+
+    public Vec3 getTranslationOffset() {
+        return translationOffset;
     }
-    public void setSprint(float input)
-    {
-        this.sprint = input;
+
+    public void setTranslationOffset(Vec3 translationOffset) {
+        this.translationOffset = translationOffset;
     }
-    public void setSteering(float input)
-    {
-        this.steeringInput = input;
+
+    public void setTranslationOffset(double x, double y, double z) {
+        this.translationOffset = new Vec3(x, y, z);
     }
-    public void setHandbrake(float input)
-    {
-        this.handbrake = input;
+
+    protected final void writeFloatTag(EntityDataAccessor<Float> dataAccessor, float in) {
+        this.entityData.set(dataAccessor, in);
+    }
+
+    protected final void writeBoolTag(EntityDataAccessor<Boolean> dataAccessor, boolean in) {
+        this.entityData.set(dataAccessor, in);
+    }
+
+    protected float readFloatTag(EntityDataAccessor<Float> dataAccessor) {
+        return this.entityData.get(dataAccessor);
+    }
+
+    protected boolean readBoolTag(EntityDataAccessor<Boolean> dataAccessor) {
+        return this.entityData.get(dataAccessor);
+    }
+
+    public float getZRot() {
+        return zRot;
+    }
+
+    public void setZRot(float zRot) {
+        this.zRot = zRot;
     }
 
     @Override
@@ -109,20 +141,26 @@ public abstract class AbstractVehicle extends Entity implements GeoEntity {
     }
 
     @Override
-    public void onSyncedDataUpdated(EntityDataAccessor<?> dataAccessor) {
-        super.onSyncedDataUpdated(dataAccessor);
-        if (dataAccessor.equals(SEAT_MANAGER)) readSeatManager(this.entityData.get(SEAT_MANAGER));
+    protected final void playStepSound(BlockPos blockPos, BlockState blockState) {
+    }
+
+    // Come on you can't just push a vehicle, you're not *that* strong
+    @Override
+    public void push(double x, double y, double z) {
     }
 
     @Override
-    protected void readAdditionalSaveData(CompoundTag compound)
-    {
+    public boolean isPickable() {
+        return true;
+    }
+
+    @Override
+    protected void readAdditionalSaveData(CompoundTag compound) {
         if (compound.contains("SeatManager", Tag.TAG_COMPOUND)) readSeatManager(compound.getCompound("SeatManager"));
     }
 
     @Override
-    protected void addAdditionalSaveData(CompoundTag compound)
-    {
+    protected void addAdditionalSaveData(CompoundTag compound) {
         compound.put("SeatManager", writeSeatManager());
     }
 
@@ -134,23 +172,42 @@ public abstract class AbstractVehicle extends Entity implements GeoEntity {
             seatTag.putUUID("UUID", SeatManager.get(i));
             seatTag.putInt("Index", i);
             SeatManagerList.add(seatTag);
-        };
-        SeatManagerTag.put("seatList",SeatManagerList);
+        }
+        SeatManagerTag.put("seatList", SeatManagerList);
         return SeatManagerTag;
     }
 
-    protected void readSeatManager(CompoundTag tag) {
-        if (!tag.contains("seatList")) return;
-        ListTag SeatManagerList = tag.getList("seatList", Tag.TAG_COMPOUND);
-        for (Tag value : SeatManagerList) {
-            CompoundTag seatTag = (CompoundTag) value;
-            SeatManager.set(seatTag.getInt("Index"), seatTag.getUUID("UUID"));
-        };
-    }
-
     @Override
-    public boolean isPickable() {
-        return true;
+    public InteractionResult interact(Player player, InteractionHand hand) {
+        if (!player.level().isClientSide && !player.isCrouching()) {
+            // Unused for now
+            ItemStack heldItem = player.getItemInHand(hand);
+
+            if (this.canRide(player)) {
+                if (SeatManager.contains(player.getUUID())) return InteractionResult.SUCCESS;
+                int closestSeatIndex = -1;
+                double closestDistance = 0;
+                for (int i = 0; i < Seats.length; i++) {
+                    SeatData seat = Seats[i];
+                    if (!SeatManager.get(i).equals(UUID.fromString("00000000-0000-0000-0000-000000000000"))) continue;
+
+                    Vec3 seatVec = seat.seatOffset.yRot(-this.getYRot() * ((float) Math.PI / 180F)).add(this.position());
+                    double distance = player.distanceToSqr(seatVec.x, seatVec.y - player.getBbHeight() / 2F, seatVec.z);
+                    if (closestSeatIndex == -1 || distance < closestDistance) {
+                        closestSeatIndex = i;
+                        closestDistance = distance;
+                    }
+                }
+                LOGGER.info("Seat info: " + closestSeatIndex + " - " + player.getName() + " - " + (player.level().isClientSide ? "Client" : "Server"));
+                LOGGER.info("Chosen 'closest' seat: " + closestSeatIndex + " with distance of " + closestDistance + " metres");
+                SeatManager.set(closestSeatIndex, player.getUUID());
+                this.entityData.set(SEAT_MANAGER, writeSeatManager(), true);
+                if (closestSeatIndex != -1) player.startRiding(this);
+                return InteractionResult.SUCCESS;
+            }
+        }
+        //LOGGER.info(SeatManager.toString() + " - " + (player.level().isClientSide ? "Client" : "Server"));
+        return InteractionResult.SUCCESS;
     }
 
     @Override
@@ -159,61 +216,81 @@ public abstract class AbstractVehicle extends Entity implements GeoEntity {
     }
 
     @Override
-    protected final void playStepSound(BlockPos blockPos, BlockState blockState) {}
-
-    @Override
-    public void lerpTo(double x, double y, double z, float yaw, float pitch, int posRotationIncrements, boolean teleport)
-    {
-        this.lerpX = x;
-        this.lerpY = y;
-        this.lerpZ = z;
-        this.lerpYaw = (double) yaw;
-        this.lerpPitch = (double) pitch;
-        this.lerpSteps = 10;
-    }
-
-    private void lerpTick()
-    {
-        if(this.lerpSteps > 0)
-        {
-            double d0 = this.getX() + (this.lerpX - this.getX()) / (double) this.lerpSteps;
-            double d1 = this.getY() + (this.lerpY - this.getY()) / (double) this.lerpSteps;
-            double d2 = this.getZ() + (this.lerpZ - this.getZ()) / (double) this.lerpSteps;
-            double d3 = MathHelper.wrapDegrees(this.lerpYaw - (double) this.getYRot());
-            --this.lerpSteps;
-            this.setPos(d0, d1, d2);
-
-            float y = (float) ((double) this.getYRot() + d3 / (double) this.lerpSteps);
-            float x = (float) ((double) this.getXRot() + (this.lerpPitch - (double) this.getXRot()) / (double) this.lerpSteps);
-            if (!Float.isNaN(y)) this.setYRot(y);
-            if (!Float.isNaN(x)) this.setXRot(x);
-        }
+    protected void positionRider(Entity rider_, MoveFunction moveFunc) {
+        super.positionRider(rider_, moveFunc);
+        updatePassengerPosition(rider_);
     }
 
     @Override
-    public void addPassenger(Entity passenger)
-    {
+    protected boolean canRide(@NotNull Entity entity) {
+        return SeatManager.contains(UUID.fromString("00000000-0000-0000-0000-000000000000"));
+    }
+
+    @Override
+    public void addPassenger(Entity passenger) {
         super.addPassenger(passenger);
-        if(this.isControlledByLocalInstance() && this.lerpSteps > 0)
-        {
+        if (this.isControlledByLocalInstance() && this.lerpSteps > 0) {
             this.lerpSteps = 0;
             this.setPos(this.lerpX, this.lerpY, this.lerpZ);
-            this.setYRot( (float) this.lerpYaw);
-            this.setXRot((float) this.lerpPitch);
+            this.setYRot((float) this.lerpYRot);
+            this.setXRot((float) this.lerpXRot);
         }
     }
 
     @Override
-    protected boolean canAddPassenger(Entity passenger)
-    {
+    protected void removePassenger(Entity entity) {
+        super.removePassenger(entity);
+        if (!entity.level().isClientSide && SeatManager.contains(entity.getUUID())) {
+            if (SeatManager.indexOf(entity.getUUID()) == 0) throttle = 0;
+            SeatManager.set(SeatManager.indexOf(entity.getUUID()), UUID.fromString("00000000-0000-0000-0000-000000000000"));
+            this.entityData.set(SEAT_MANAGER, writeSeatManager());
+        }
+        LOGGER.info(SeatManager.toString() + " - " + (this.level().isClientSide ? "Client" : "Server"));
+    }
+
+    @Override
+    protected boolean canAddPassenger(Entity passenger) {
         return this.getPassengers().size() < Seats.length;
     }
 
-    // Come on you can't just push a vehicle, you're not *that* strong
     @Override
-    public void push(double x, double y, double z) {}
+    public void lerpTo(double x, double y, double z, float yaw, float pitch, int posRotationIncrements, boolean teleport) {
+        this.lerpX = x;
+        this.lerpY = y;
+        this.lerpZ = z;
+        this.lerpYRot = yaw;
+        this.lerpXRot = pitch;
+        this.lerpSteps = posRotationIncrements;
+    }
 
-    protected long lastTick;
+    @Override
+    public void onSyncedDataUpdated(EntityDataAccessor<?> dataAccessor) {
+        super.onSyncedDataUpdated(dataAccessor);
+        if (dataAccessor.equals(SEAT_MANAGER)) readSeatManager(this.entityData.get(SEAT_MANAGER));
+    }
+
+    protected void updatePassengerPosition(Entity passenger) {
+        if (passenger.level().isClientSide() && this.hasPassenger(passenger)) {
+            if (!SeatManager.contains(passenger.getUUID())) return;
+            SeatData seat = Seats[SeatManager.indexOf(passenger.getUUID())];
+
+            if (seat == null) return;
+            passenger.setYBodyRot(this.getYRot() + seat.yawOffset);
+            Vec3 position = new Vec3(this.position().x, this.position().y, this.position().z).add(seat.seatOffset.zRot((float) Math.toRadians(passengerZRot)).yRot(-this.getYRot() * ((float) Math.PI / 180F)));
+            //position = position.yRot((this.getYRot()));
+            passenger.setPos(position);
+        }
+    }
+
+    protected void readSeatManager(CompoundTag tag) {
+        if (!tag.contains("seatList")) return;
+        ListTag SeatManagerList = tag.getList("seatList", Tag.TAG_COMPOUND);
+        for (Tag value : SeatManagerList) {
+            CompoundTag seatTag = (CompoundTag) value;
+            SeatManager.set(seatTag.getInt("Index"), seatTag.getUUID("UUID"));
+        }
+    }
+
     @SubscribeEvent
     public void tick(double deltaTime) {
         super.tick();
@@ -229,10 +306,14 @@ public abstract class AbstractVehicle extends Entity implements GeoEntity {
                 inputJump = Minecraft.getInstance().options.keyJump.isDown();
                 inputSprint = Minecraft.getInstance().options.keySprint.isDown();
 
-                if ((inputForward && inputBackward ? 2f : inputForward ? 1f : inputBackward ? -1f : 0f) != throttle) PacketHandler.INSTANCE.sendToServer(new MessageThrottle(inputForward && inputBackward ? 2f : inputForward ? 1f : inputBackward ? -1f : 0f));
-                if ((inputLeft ? -1f : inputRight ? 1f : 0f) != steeringInput) PacketHandler.INSTANCE.sendToServer(new MessageSteering(inputLeft ? -1f : inputRight ? 1f : 0f));
-                if ((inputJump ? 1f : 0f) != handbrake) PacketHandler.INSTANCE.sendToServer(new MessageHandbrake(inputJump ? 1f : 0f));
-                if ((inputSprint ? 1f : 0f) != sprint) PacketHandler.INSTANCE.sendToServer(new MessageSprint(inputSprint ? 1f : 0f));
+                if ((inputForward && inputBackward ? 2f : inputForward ? 1f : inputBackward ? -1f : 0f) != throttle)
+                    PacketHandler.INSTANCE.sendToServer(new MessageThrottle(inputForward && inputBackward ? 2f : inputForward ? 1f : inputBackward ? -1f : 0f));
+                if ((inputLeft ? -1f : inputRight ? 1f : 0f) != steeringInput)
+                    PacketHandler.INSTANCE.sendToServer(new MessageSteering(inputLeft ? -1f : inputRight ? 1f : 0f));
+                if ((inputJump ? 1f : 0f) != handbrake)
+                    PacketHandler.INSTANCE.sendToServer(new MessageHandbrake(inputJump ? 1f : 0f));
+                if ((inputSprint ? 1f : 0f) != sprint)
+                    PacketHandler.INSTANCE.sendToServer(new MessageSprint(inputSprint ? 1f : 0f));
                 this.setThrottle(inputForward && inputBackward ? 2f : inputForward ? 1f : inputBackward ? -1f : 0f);
                 this.setSteering(inputLeft ? -1f : inputRight ? 1f : 0f);
                 this.setHandbrake(inputJump ? 1f : 0f);
@@ -241,8 +322,7 @@ public abstract class AbstractVehicle extends Entity implements GeoEntity {
 //                UpdateCamera(deltaTime);
 
                 this.readSeatManager(this.entityData.get(SEAT_MANAGER));
-                if(engineSounds.containsKey(AudioManager.SoundType.ENGINE_IDLE) && engineSounds.containsKey(AudioManager.SoundType.ENGINE_MOVING) && !SeatManager.get(0).equals(UUID.fromString("00000000-0000-0000-0000-000000000000")))
-                {
+                if (engineSounds.containsKey(AudioManager.SoundType.ENGINE_IDLE) && engineSounds.containsKey(AudioManager.SoundType.ENGINE_MOVING) && !SeatManager.get(0).equals(UUID.fromString("00000000-0000-0000-0000-000000000000"))) {
                     playEngineSound(SOUND_MANAGER, this, AudioManager.SoundType.ENGINE_IDLE, this.engineSounds.get(AudioManager.SoundType.ENGINE_IDLE)).setVolume(0f);
                     playEngineSound(SOUND_MANAGER, this, AudioManager.SoundType.ENGINE_MOVING, this.engineSounds.get(AudioManager.SoundType.ENGINE_MOVING)).setVolume(0f);
                 }
@@ -250,213 +330,59 @@ public abstract class AbstractVehicle extends Entity implements GeoEntity {
         }
     }
 
+    public void setThrottle(float power) {
+        this.throttle = power;
+    }
+
+    public void setSprint(float input) {
+        this.sprint = input;
+    }
+
+    public void setSteering(float input) {
+        this.steeringInput = input;
+    }
+
+    public void setHandbrake(float input) {
+        this.handbrake = input;
+    }
+
+    private void lerpTick() {
+        if (this.lerpSteps > 0) {
+            double d0 = this.getX() + (this.lerpX - this.getX()) / (double) this.lerpSteps;
+            double d2 = this.getY() + (this.lerpY - this.getY()) / (double) this.lerpSteps;
+            double d4 = this.getZ() + (this.lerpZ - this.getZ()) / (double) this.lerpSteps;
+            double d6 = Mth.wrapDegrees(this.lerpYRot - (double) this.getYRot());
+            double d8 = Mth.wrapDegrees(this.lerpXRot - (double) this.getXRot());
+            float yRot = this.getYRot() + (float) d6 / (float) this.lerpSteps;
+            float xRot = this.getXRot() + (float) d8 / (float) this.lerpSteps;
+            --this.lerpSteps;
+            this.setPos(d0, d2, d4);
+            if (!Float.isNaN(xRot)) this.setXRot(xRot);
+            if (!Float.isNaN(yRot)) this.setYRot(yRot);
+        }
+    }
+
     protected void UpdateCamera(double deltaTime) {
         Entity camera = Minecraft.getInstance().cameraEntity;
 
-        float xPos = Maths.fInterpToExp((float) camera.getX(), (float) this.getX(), 3f, (float) deltaTime);
-        float yPos = Maths.fInterpToExp((float) camera.getY(), (float) this.getY(), 3f, (float) deltaTime);
-        float zPos = Maths.fInterpToExp((float) camera.getZ(), (float) this.getZ(), 3f, (float) deltaTime);
+        float xPos = MathUtils.fInterpToExp((float) camera.getX(), (float) this.getX(), 3f, (float) deltaTime);
+        float yPos = MathUtils.fInterpToExp((float) camera.getY(), (float) this.getY(), 3f, (float) deltaTime);
+        float zPos = MathUtils.fInterpToExp((float) camera.getZ(), (float) this.getZ(), 3f, (float) deltaTime);
 
         camera.setPos(xPos, yPos, zPos);
-        camera.setYRot(Maths.fInterpToExp(camera.getYRot(),this.getYRot(), 3f, (float) deltaTime));
+        camera.setYRot(MathUtils.fInterpToExp(camera.getYRot(), this.getYRot(), 3f, (float) deltaTime));
     }
 
-    protected abstract void setupSeats();
-    protected int lerpSteps;
-    protected double lerpX;
-    protected double lerpY;
-    protected double lerpZ;
-    protected double lerpYaw;
-    protected double lerpPitch;
-
-    @Override
-    protected boolean canRide(@NotNull Entity entity)
-    {
-        return SeatManager.contains(UUID.fromString("00000000-0000-0000-0000-000000000000"));
+    protected boolean isCollidingWithBlocks(BlockPos pos, AABB aabb) {
+        return aabb.intersects(new AABB(pos)) && !getBlockAtPos(pos).isAir();
     }
 
-    @Override
-    public InteractionResult interact(Player player, InteractionHand hand) {
-        if(!player.level().isClientSide && !player.isCrouching())
-        {
-            // Unused for now
-            ItemStack heldItem = player.getItemInHand(hand);
-
-            if(this.canRide(player))
-            {
-                if (SeatManager.contains(player.getUUID())) return InteractionResult.SUCCESS;
-                int closestSeatIndex = -1;
-                double closestDistance = 0;
-                for (int i = 0; i < Seats.length; i++) {
-                    SeatData seat = Seats[i];
-                    if (!SeatManager.get(i).equals(UUID.fromString("00000000-0000-0000-0000-000000000000"))) continue;
-
-                    Vec3 seatVec = seat.seatOffset.yRot(-this.getYRot() * ((float)Math.PI / 180F)).add(this.position());
-                    double distance = player.distanceToSqr(seatVec.x, seatVec.y - player.getBbHeight() / 2F, seatVec.z);
-                    if(closestSeatIndex == -1 || distance < closestDistance)
-                    {
-                        closestSeatIndex = i;
-                        closestDistance = distance;
-                    }
-                };
-                LOGGER.info("Seat info: " + String.valueOf(closestSeatIndex) + " - " + player.getName() + " - " + (player.level().isClientSide ? "Client" : "Server"));
-                LOGGER.info("Chosen 'closest' seat: " + String.valueOf(closestSeatIndex) + " with distance of " + String.valueOf(closestDistance) + " metres");
-                SeatManager.set(closestSeatIndex, player.getUUID());
-                this.entityData.set(SEAT_MANAGER, writeSeatManager(), true);
-                if (closestSeatIndex != -1) player.startRiding(this);
-                return InteractionResult.SUCCESS;
-            }
-        }
-        //LOGGER.info(SeatManager.toString() + " - " + (player.level().isClientSide ? "Client" : "Server"));
-        return InteractionResult.SUCCESS;
-    }
-
-    @Override
-    protected void positionRider(Entity rider_, MoveFunction moveFunc) {
-        super.positionRider(rider_, moveFunc);
-        updatePassengerPosition(rider_);
-    }
-
-    protected void updatePassengerPosition(Entity passenger)
-    {
-        if(passenger.level().isClientSide() && this.hasPassenger(passenger)) {
-            if (!SeatManager.contains(passenger.getUUID())) return;
-            SeatData seat = Seats[SeatManager.indexOf(passenger.getUUID())];
-
-            if (seat == null) return;
-            passenger.setYBodyRot(this.getYRot() + seat.yawOffset);
-            Vec3 position = new Vec3(this.position().x, this.position().y, this.position().z).add(seat.seatOffset.yRot(-this.getYRot() * ((float)Math.PI / 180F)));
-            //position = position.yRot((this.getYRot()));
-            passenger.setPos(position);
-        }
-    }
-
-    @Override
-    protected void removePassenger(Entity entity) {
-        super.removePassenger(entity);
-        if (!entity.level().isClientSide && SeatManager.contains(entity.getUUID())) {
-            if (SeatManager.indexOf(entity.getUUID()) == 0) throttle = 0;
-            SeatManager.set(SeatManager.indexOf(entity.getUUID()), UUID.fromString("00000000-0000-0000-0000-000000000000"));
-            this.entityData.set(SEAT_MANAGER, writeSeatManager());
-        }
-        LOGGER.info(SeatManager.toString() + " - " + (this.level().isClientSide ? "Client" : "Server"));
-    }
-
-    public boolean isCollidingWithBlock(Vec3 pos, AABB aabb) {
-        return aabb.move(pos).intersects(new AABB(new BlockPos(((int) pos.x), (int) pos.y, (int) pos.z)));
+    protected BlockState getBlockAtPos(BlockPos pos) {
+        return this.level().getBlockState(pos);
     }
 
     // Overriding the move method, because 'collide' is private
     // 99% of this is unchanged, except for the 'this.collide()' call
-//    @Override
-//    public final void move(@NotNull MoverType moverType, @NotNull Vec3 motion) {
-//        if (this.noPhysics) {
-//            this.setPos(this.getX() + motion.x, this.getY() + motion.y, this.getZ() + motion.z);
-//        } else {
-//            this.wasOnFire = this.isOnFire();
-//            if (moverType == MoverType.PISTON) {
-//                motion = this.limitPistonMovement(motion);
-//                if (motion.equals(Vec3.ZERO)) {
-//                    return;
-//                }
-//            }
-//
-//            this.level().getProfiler().push("move");
-//            if (this.stuckSpeedMultiplier.lengthSqr() > 1.0E-7D) {
-//                motion = motion.multiply(this.stuckSpeedMultiplier);
-//                this.stuckSpeedMultiplier = Vec3.ZERO;
-//                this.setDeltaMovement(Vec3.ZERO);
-//            }
-//
-//            motion = this.maybeBackOffFromEdge(motion, moverType);
-//            Vec3 vec3 = this.doCollide(motion);
-//            //Vec3 vec3 = this.isColliding(this.position().add(motion), );
-//            double d0 = vec3.lengthSqr();
-//            if (d0 > 1.0E-7D) {
-//                if (this.fallDistance != 0.0F && d0 >= 1.0D) {
-//                    BlockHitResult blockhitresult = this.level().clip(new ClipContext(this.position(), this.position().add(vec3), ClipContext.Block.FALLDAMAGE_RESETTING, ClipContext.Fluid.WATER, this));
-//                    if (blockhitresult.getType() != HitResult.Type.MISS) {
-//                        this.resetFallDistance();
-//                    }
-//                }
-//
-//                this.setPos(this.getX() + vec3.x, this.getY() + vec3.y, this.getZ() + vec3.z);
-//            }
-//
-//            this.level().getProfiler().pop();
-//            this.level().getProfiler().push("rest");
-//            boolean flag4 = !Mth.equal(motion.x, vec3.x);
-//            boolean flag = !Mth.equal(motion.z, vec3.z);
-//            this.horizontalCollision = flag4 || flag;
-//            this.verticalCollision = motion.y != vec3.y;
-//            this.verticalCollisionBelow = this.verticalCollision && motion.y < 0.0D;
-//            if (this.horizontalCollision) {
-//                this.minorHorizontalCollision = this.isHorizontalCollisionMinor(vec3);
-//            } else {
-//                this.minorHorizontalCollision = false;
-//            }
-//
-//            this.setOnGroundWithKnownMovement(this.verticalCollisionBelow, vec3);
-//            BlockPos blockpos = this.getOnPosLegacy();
-//            BlockState blockstate = this.level().getBlockState(blockpos);
-//            this.checkFallDamage(vec3.y, this.onGround(), blockstate, blockpos);
-//            if (this.isRemoved()) {
-//                this.level().getProfiler().pop();
-//            } else {
-//                if (this.horizontalCollision) {
-//                    Vec3 vec31 = this.getDeltaMovement();
-//                    this.setDeltaMovement(flag4 ? 0.0D : vec31.x, vec31.y, flag ? 0.0D : vec31.z);
-//                }
-//
-//                Block block = blockstate.getBlock();
-//                if (motion.y != vec3.y) {
-//                    block.updateEntityAfterFallOn(this.level(), this);
-//                }
-//
-//                if (this.onGround()) {
-//                    block.stepOn(this.level(), blockpos, blockstate, this);
-//                }
-//
-//                Entity.MovementEmission entity$movementemission = this.getMovementEmission();
-//                if (entity$movementemission.emitsAnything() && !this.isPassenger()) {
-//                    double d1 = vec3.x;
-//                    double d2 = vec3.y;
-//                    double d3 = vec3.z;
-//                    this.flyDist = (float)((double)this.flyDist + vec3.length() * 0.6D);
-//                    BlockPos blockPos1 = this.getOnPos();
-//                    BlockState blockState1 = this.level().getBlockState(blockPos1);
-//                    d2 = 0.0D;
-//
-//                    this.walkDist += (float)vec3.horizontalDistance() * 0.6F;
-//                    this.moveDist += (float)Math.sqrt(d1 * d1 + d2 * d2 + d3 * d3) * 0.6F;
-//                    if (this.moveDist > this.nextStep && !blockState1.isAir()) {
-//                       this.nextStep = this.nextStep();
-//                    }
-//                }
-//
-//                this.tryCheckInsideBlocks();
-//                float f = this.getBlockSpeedFactor();
-//                this.setDeltaMovement(this.getDeltaMovement().multiply((double)f, 1.0D, (double)f));
-//                if (this.level().getBlockStatesIfLoaded(this.getBoundingBox().deflate(1.0E-6D)).noneMatch((p_20127_) -> {
-//                    return p_20127_.is(BlockTags.FIRE) || p_20127_.is(Blocks.LAVA);
-//                })) {
-//                    if (this.getRemainingFireTicks() <= 0) {
-//                        this.setRemainingFireTicks(-this.getFireImmuneTicks());
-//                    }
-//
-//                    if (this.wasOnFire && (this.isInPowderSnow || this.isInWaterRainOrBubble() || this.isInFluidType((fluidType, height) -> this.canFluidExtinguish(fluidType)))) {
-//                        this.playEntityOnFireExtinguishedSound();
-//                    }
-//                }
-//
-//                if (this.isOnFire() && (this.isInPowderSnow || this.isInWaterRainOrBubble() || this.isInFluidType((fluidType, height) -> this.canFluidExtinguish(fluidType)))) {
-//                    this.setRemainingFireTicks(-this.getFireImmuneTicks());
-//                }
-//
-//                this.level().getProfiler().pop();
-//            }
-//        }
-//    }
 
     private Vec3 doCollide(Vec3 motion) {
         double d1 = motion.x;
@@ -472,7 +398,6 @@ public abstract class AbstractVehicle extends Entity implements GeoEntity {
     }
 
 
-
     private Vec3 doCollisionCheckForAABB(AABB aabb, Vec3 motion) {
         List<VoxelShape> list = this.level().getEntityCollisions(this, aabb.expandTowards(motion));
         Vec3 vec3 = motion.lengthSqr() == 0.0D ? motion : collideBoundingBox(this, motion, aabb, this.level(), list);
@@ -482,9 +407,9 @@ public abstract class AbstractVehicle extends Entity implements GeoEntity {
         boolean flag3 = this.onGround() || flag1 && motion.y < 0.0D;
         float stepHeight = getStepHeight();
         if (stepHeight > 0.0F && flag3 && (flag || flag2)) {
-            Vec3 vec31 = collideBoundingBox(this, new Vec3(motion.x, (double)stepHeight, motion.z), aabb, this.level(), list);
-            Vec3 vec32 = collideBoundingBox(this, new Vec3(0.0D, (double)stepHeight, 0.0D), aabb.expandTowards(motion.x, 0.0D, motion.z), this.level(), list);
-            if (vec32.y < (double)stepHeight) {
+            Vec3 vec31 = collideBoundingBox(this, new Vec3(motion.x, stepHeight, motion.z), aabb, this.level(), list);
+            Vec3 vec32 = collideBoundingBox(this, new Vec3(0.0D, stepHeight, 0.0D), aabb.expandTowards(motion.x, 0.0D, motion.z), this.level(), list);
+            if (vec32.y < (double) stepHeight) {
                 Vec3 vec33 = collideBoundingBox(this, new Vec3(motion.x, 0.0D, motion.z), aabb.move(vec32), this.level(), list).add(vec32);
                 if (vec33.horizontalDistanceSqr() > vec31.horizontalDistanceSqr()) {
                     vec31 = vec33;
@@ -498,15 +423,18 @@ public abstract class AbstractVehicle extends Entity implements GeoEntity {
 
         return vec3;
     }
-
+    private final AnimatableInstanceCache geoCache = GeckoLibUtil.createInstanceCache(this);
     @Override
     public void registerControllers(final AnimatableManager.ControllerRegistrar controllers) {
+        controllers.add(new AnimationController<>(this, "Flying", 0, this::flyAnimController));
     }
+
+    protected <E extends AbstractVehicle> PlayState flyAnimController(final AnimationState<E> event) {
+        return event.setAndContinue(RawAnimation.begin().thenLoop("programmable"));
+    }
+
     @Override
     public AnimatableInstanceCache getAnimatableInstanceCache() {
-        if (this.geoCache == null) {
-            this.geoCache = GeckoLibUtil.createInstanceCache(this);
-        }
         return this.geoCache;
     }
 }
